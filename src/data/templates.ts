@@ -1,4 +1,10 @@
-import { TemplateMeta } from '../types/builder';
+import { AppMode, TemplateMeta } from '../types/builder';
+import {
+  INVOICE_TEMPLATES,
+  JOB_APP_TEMPLATES,
+  OFFICE_LETTER_TEMPLATES,
+  POSTER_TEMPLATES,
+} from './extraTemplates';
 
 export const CV_TEMPLATES: TemplateMeta[] = [
   // FORMAL & GOVT
@@ -770,11 +776,31 @@ export const BIODATA_TEMPLATES: TemplateMeta[] = [
   },
 ];
 
-export function getTemplatesForMode(mode: 'cv' | 'biodata'): TemplateMeta[] {
-  return mode === 'cv' ? CV_TEMPLATES : BIODATA_TEMPLATES;
+export {
+  INVOICE_TEMPLATES,
+  JOB_APP_TEMPLATES,
+  OFFICE_LETTER_TEMPLATES,
+  POSTER_TEMPLATES,
+};
+
+export function getTemplatesForMode(mode: AppMode): TemplateMeta[] {
+  switch (mode) {
+    case 'cv':
+      return CV_TEMPLATES;
+    case 'biodata':
+      return BIODATA_TEMPLATES;
+    case 'job_app':
+      return JOB_APP_TEMPLATES;
+    case 'office_letter':
+      return OFFICE_LETTER_TEMPLATES;
+    case 'poster':
+      return POSTER_TEMPLATES;
+    case 'invoice':
+      return INVOICE_TEMPLATES;
+  }
 }
 
-export function getTemplateById(mode: 'cv' | 'biodata', id: string): TemplateMeta {
+export function getTemplateById(mode: AppMode, id: string): TemplateMeta {
   const list = getTemplatesForMode(mode);
   return list.find((t) => t.id === id) ?? list[0];
 }

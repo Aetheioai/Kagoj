@@ -636,10 +636,14 @@ export function CVTemplateRenderer({
 
   const renderDeclaration = () => {
     if (!hasDeclaration) return null;
+    const sigSize = customization?.signatureSize ?? 'md';
+    const sigH = sigSize === 'sm' ? 32 : sigSize === 'lg' ? 54 : 42;
+    const showSigImg =
+      customization?.showSignatureImage !== false && hasText(data.signatureImage);
     return (
       <div className="a4-avoid-break leading-[1.52]" style={{ fontSize: fs(11.3) }}>
         {hasText(data.declaration) && <p className="text-neutral-700">{data.declaration}</p>}
-        <div className="mt-7 flex items-end justify-between gap-6">
+        <div className="mt-6 flex items-end justify-between gap-6">
           <div className="text-neutral-700">
             {hasText(data.declarationDate) && (
               <div>
@@ -648,6 +652,17 @@ export function CVTemplateRenderer({
             )}
           </div>
           <div className="text-center min-w-[185px]">
+            {showSigImg && (
+              <div className="flex justify-center mb-1">
+                <img
+                  src={data.signatureImage}
+                  alt="Signature"
+                  referrerPolicy="no-referrer"
+                  style={{ height: `${sigH}px` }}
+                  className="w-auto max-w-[175px] object-contain"
+                />
+              </div>
+            )}
             <div className="border-t border-neutral-800 pt-1.5 font-bold text-neutral-950">
               {hasText(data.signatureName) ? data.signatureName : L.signature}
             </div>

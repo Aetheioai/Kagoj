@@ -14,6 +14,7 @@ import {
 import { BD_EXAM_PRESETS, BLOOD_GROUPS, LABELS } from '../../data/i18n';
 import { makeId } from '../../utils/storage';
 import { FieldWrapper, PhotoUploader, SketchDivider } from '../SketchChrome';
+import { SignatureUploader } from '../SignaturePadModal';
 
 interface CVStepsProps {
   step: number; // 1 = Basics, 2 = Education, 3 = Exp & Skills, 4 = Personal & Refs (2-page only)
@@ -1174,6 +1175,12 @@ export function CVSteps({
             />
           </FieldWrapper>
         </div>
+
+        <SignatureUploader
+          signature={data.signatureImage || ''}
+          language={language}
+          onChange={(sig) => update({ signatureImage: sig })}
+        />
       </div>
     </div>
   );

@@ -1,30 +1,60 @@
 import { toCanvas } from 'html-to-image';
 import { jsPDF } from 'jspdf';
 import { PageFormat } from '../types/builder';
-import {
-  A4_HEIGHT_PX,
-  A4_WIDTH_PX,
-  applySmartPageBreaks,
-} from './pagination';
+import { A4_WIDTH_PX, applySmartPageBreaks } from './pagination';
 
 const A4_WIDTH_MM = 210;
 const A4_HEIGHT_MM = 297;
 
+export interface CustomSinglePageSize {
+  widthPx: number;
+  heightPx: number;
+  widthMm: number;
+  heightMm: number;
+}
+
+async function waitForCloneAssets(clone: HTMLElement): Promise<void> {
+  if (document.fonts && document.fonts.ready) {
+    await document.fonts.ready;
+  }
+  const imgs = Array.from(clone.querySelectorAll('img'));
+  await Promise.all(
+    imgs.map((img) => {
+      if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+      return new Promise<void>((resolve) => {
+        img.addEventListener('load', () => resolve(), { once: true });
+        img.addEventListener('error', () => resolve(), { once: true });
+        window.setTimeout(resolve, 2500);
+      });
+    })
+  );
+}
+
+function triggerBlobDownload(blob: Blob, filename: string): void {
+  const blobUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = blobUrl;
+  link.download = filename;
+  link.rel = 'noopener';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.setTimeout(() => URL.revokeObjectURL(blobUrl), 30000);
+}
+
 /**
- * Clones the live unscaled A4 document into an isolated container, runs our
- * DOM-aware smart pagination (guaranteeing zero split sections and clean top/bottom
- * margins on every page), captures at high DPI, and downloads a crisp multi-page A4 PDF.
+ * Clones the live unscaled document into an isolated container, runs DOM-aware smart pagination
+ * (or exact single-page capture for multi-aspect-ratio posters), captures at high DPI,
+ * and downloads a crisp PDF matching the exact page dimensions and orientation.
  */
 export async function exportElementToA4Pdf(
   sourceElement: HTMLElement,
   filename: string,
-  pageFormat: PageFormat = '2-page'
+  pageFormat: PageFormat = '2-page',
+  customSize?: CustomSinglePageSize
 ): Promise<void> {
-  if (document.fonts && document.fonts.ready) {
-    await document.fonts.ready;
-  }
+  const targetWidthPx = customSize ? customSize.widthPx : A4_WIDTH_PX;
 
-  // Create an isolated offscreen clone so we never disturb React's live DOM
   const host = document.createElement('div');
   host.style.position = 'fixed';
   host.style.left = '0';
@@ -36,30 +66,13 @@ export async function exportElementToA4Pdf(
   host.style.zIndex = '-1';
 
   const clone = sourceElement.cloneNode(true) as HTMLElement;
-  clone.style.width = `${A4_WIDTH_PX}px`;
+  clone.style.width = `${targetWidthPx}px`;
   clone.style.transform = 'none';
   host.appendChild(clone);
   document.body.appendChild(host);
 
   try {
-    // Wait for all images inside the clone to load
-    const imgs = Array.from(clone.querySelectorAll('img'));
-    await Promise.all(
-      imgs.map((img) => {
-        if (img.complete && img.naturalWidth > 0) return Promise.resolve();
-        return new Promise<void>((resolve) => {
-          img.addEventListener('load', () => resolve(), { once: true });
-          img.addEventListener('error', () => resolve(), { once: true });
-          window.setTimeout(resolve, 2500);
-        });
-      })
-    );
-
-    // Run smart section-aware pagination matching the selected 1-page or 2-page format
-    const { totalPages, contentHeight } = applySmartPageBreaks(clone, {
-      replicatePageFrames: true,
-      pageFormat,
-    });
+    await waitForCloneAssets(clone);
 
     const sheetEl = clone.querySelector<HTMLElement>('.a4-sheet') || clone;
     const sheetBg = window.getComputedStyle(sheetEl).backgroundColor || '#ffffff';
@@ -68,6 +81,58 @@ export async function exportElementToA4Pdf(
       typeof window !== 'undefined' &&
       (window.innerWidth < 768 || /iPhone|iPad|iPod|Android/i.test(navigator.userAgent));
 
+    // Exact custom aspect-ratio single-page PDF (used for Posters in A4/1:1/4:5/9:16/16:9/Landscape)
+    if (customSize) {
+      const captureOptions = {
+        width: customSize.widthPx,
+        height: customSize.heightPx,
+        pixelRatio: isCompactDevice ? 1.85 : 2.1,
+        backgroundColor: sheetBg,
+        cacheBust: false,
+        preferredFontFormat: 'woff2' as const,
+        filter: (node: HTMLElement) =>
+          !(node instanceof HTMLElement && node.classList.contains('a4-page-guide')),
+      };
+
+      let canvas: HTMLCanvasElement;
+      try {
+        canvas = await toCanvas(clone, captureOptions);
+      } catch {
+        canvas = await toCanvas(clone, { ...captureOptions, skipFonts: true });
+      }
+
+      const orientation =
+        customSize.widthMm > customSize.heightMm ? 'landscape' : 'portrait';
+      const pdf = new jsPDF({
+        orientation,
+        unit: 'mm',
+        format: [customSize.widthMm, customSize.heightMm],
+        compress: true,
+      });
+
+      const imgData = canvas.toDataURL('image/jpeg', 0.96);
+      pdf.addImage(
+        imgData,
+        'JPEG',
+        0,
+        0,
+        customSize.widthMm,
+        customSize.heightMm,
+        undefined,
+        'FAST'
+      );
+
+      const safeName = filename.endsWith('.pdf') ? filename : `${filename}.pdf`;
+      triggerBlobDownload(pdf.output('blob'), safeName);
+      return;
+    }
+
+    // Standard multi-page A4 export with zero-cut smart pagination
+    const { totalPages, contentHeight } = applySmartPageBreaks(clone, {
+      replicatePageFrames: true,
+      pageFormat,
+    });
+
     const captureOptions = {
       width: A4_WIDTH_PX,
       height: contentHeight,
@@ -75,12 +140,8 @@ export async function exportElementToA4Pdf(
       backgroundColor: sheetBg,
       cacheBust: false,
       preferredFontFormat: 'woff2' as const,
-      filter: (node: HTMLElement) => {
-        if (node instanceof HTMLElement && node.classList.contains('a4-page-guide')) {
-          return false;
-        }
-        return true;
-      },
+      filter: (node: HTMLElement) =>
+        !(node instanceof HTMLElement && node.classList.contains('a4-page-guide')),
     };
 
     let canvas: HTMLCanvasElement;
@@ -122,16 +183,69 @@ export async function exportElementToA4Pdf(
     }
 
     const safeName = filename.endsWith('.pdf') ? filename : `${filename}.pdf`;
-    const pdfBlob = pdf.output('blob');
-    const blobUrl = URL.createObjectURL(pdfBlob);
-    const link = document.createElement('a');
-    link.href = blobUrl;
-    link.download = safeName;
-    link.rel = 'noopener';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    window.setTimeout(() => URL.revokeObjectURL(blobUrl), 30000);
+    triggerBlobDownload(pdf.output('blob'), safeName);
+  } finally {
+    document.body.removeChild(host);
+  }
+}
+
+/**
+ * Exports a single-sheet element (ideal for To-Let / Tuition Posters in 1:1, 4:5, 9:16, 16:9, A4)
+ * directly to a high-resolution PNG image ready for Facebook groups & WhatsApp sharing.
+ */
+export async function exportElementToPng(
+  sourceElement: HTMLElement,
+  filename: string,
+  widthPx: number,
+  heightPx: number
+): Promise<void> {
+  const host = document.createElement('div');
+  host.style.position = 'fixed';
+  host.style.left = '0';
+  host.style.top = '0';
+  host.style.width = '0';
+  host.style.height = '0';
+  host.style.overflow = 'hidden';
+  host.style.pointerEvents = 'none';
+  host.style.zIndex = '-1';
+
+  const clone = sourceElement.cloneNode(true) as HTMLElement;
+  clone.style.width = `${widthPx}px`;
+  clone.style.transform = 'none';
+  host.appendChild(clone);
+  document.body.appendChild(host);
+
+  try {
+    await waitForCloneAssets(clone);
+
+    const sheetEl = clone.querySelector<HTMLElement>('.a4-sheet') || clone;
+    const sheetBg = window.getComputedStyle(sheetEl).backgroundColor || '#ffffff';
+
+    const captureOptions = {
+      width: widthPx,
+      height: heightPx,
+      pixelRatio: 2,
+      backgroundColor: sheetBg,
+      cacheBust: false,
+      preferredFontFormat: 'woff2' as const,
+      filter: (node: HTMLElement) =>
+        !(node instanceof HTMLElement && node.classList.contains('a4-page-guide')),
+    };
+
+    let canvas: HTMLCanvasElement;
+    try {
+      canvas = await toCanvas(clone, captureOptions);
+    } catch {
+      canvas = await toCanvas(clone, { ...captureOptions, skipFonts: true });
+    }
+
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob((b) => resolve(b), 'image/png')
+    );
+    if (!blob) throw new Error('Could not generate PNG image.');
+
+    const safeName = filename.endsWith('.png') ? filename : `${filename}.png`;
+    triggerBlobDownload(blob, safeName);
   } finally {
     document.body.removeChild(host);
   }

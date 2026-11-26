@@ -7,6 +7,7 @@ import {
   Eye,
   FileDown,
   FileEdit,
+  ImageDown,
   Loader2,
   Lock,
   SkipForward,
@@ -20,8 +21,14 @@ import {
   CustomSectionEntry,
   DocCustomization,
   DocLanguage,
+  InvoiceData,
+  JobAppData,
+  OfficeLetterData,
   PageFormat,
+  PosterAspectRatio,
+  PosterData,
   WorkspaceState,
+  getPosterAspectSpec,
 } from './types/builder';
 import { LABELS } from './data/i18n';
 import {
@@ -35,27 +42,40 @@ import {
   SAMPLE_CV_EN,
 } from './data/samples';
 import {
+  SAMPLE_INVOICE_BN,
+  SAMPLE_INVOICE_EN,
+  getSampleForExtraMode,
+} from './data/extraSamples';
+import {
+  buildCvAutofillForInvoice,
+  buildCvAutofillForJobApp,
+  buildCvAutofillForOfficeLetter,
   clearWorkspaceStorage,
   createDefaultCustomization,
   createDefaultWorkspace,
   downloadWorkspaceBackup,
-  hasAnyBiodataData,
   hasAnyCVData,
+  hasAnyDataForMode,
+  hasAnyInvoiceData,
   hasText,
   loadWorkspaceFromStorage,
   parseBackupFile,
   saveWorkspaceToStorage,
 } from './utils/storage';
-import { exportElementToA4Pdf } from './utils/pdfExport';
+import { exportElementToA4Pdf, exportElementToPng } from './utils/pdfExport';
 import { PencilLogoMark } from './components/SketchChrome';
 import { ModeStep } from './components/steps/ModeStep';
 import { CVSteps } from './components/steps/CVSteps';
 import { BiodataSteps } from './components/steps/BiodataSteps';
+import { JobAppSteps } from './components/steps/JobAppSteps';
+import { OfficeLetterSteps } from './components/steps/OfficeLetterSteps';
+import { PosterSteps } from './components/steps/PosterSteps';
+import { InvoiceSteps } from './components/steps/InvoiceSteps';
 import { TemplateGallery } from './components/TemplateGallery';
 import { CustomizePanel } from './components/CustomizePanel';
 import { A4PreviewPane } from './components/A4PreviewPane';
-import { CVTemplateRenderer } from './components/templates/CVTemplates';
-import { BiodataTemplateRenderer } from './components/templates/BiodataTemplates';
+import { DocumentRenderer } from './components/DocumentRenderer';
+import { InvoiceCodeModal } from './components/InvoiceCodeModal';
 
 import privacyLockImg from './assets/images/sketch_privacy_lock_1795659050240.jpg';
 
@@ -63,43 +83,144 @@ type AppStage = 'purpose' | 'templates' | 'editor';
 
 const PRIVACY_ILLUS_SRC = privacyLockImg;
 
+function getStepsForMode(
+  mode: AppMode,
+  language: DocLanguage,
+  activeFormat: PageFormat
+): string[] {
+  const L = LABELS[language];
+  const isBn = language === 'bn';
+  switch (mode) {
+    case 'cv':
+      return activeFormat === '1-page' ? L.ui.cvSteps1P : L.ui.cvSteps2P;
+    case 'biodata':
+      return activeFormat === '1-page' ? L.ui.biodataSteps1P : L.ui.biodataSteps2P;
+    case 'job_app':
+      return isBn
+        ? ['আবেদনকারী ও প্রাপক', 'বিষয় ও বক্তব্য', 'সংযুক্তি ও স্বাক্ষর', 'কাস্টমাইজ ও PDF']
+        : ['Applicant & Recipient', 'Subject & Letter', 'Enclosures & Sign', 'Customize & PDF'];
+    case 'office_letter':
+      return isBn
+        ? ['ধরন ও লেটারহেড', 'প্রাপক ও মূল চিঠি', 'স্বাক্ষর ও অনুলিপি', 'কাস্টমাইজ ও PDF']
+        : ['Type & Letterhead', 'Recipient & Body', 'Sender, CC & Sign', 'Customize & PDF'];
+    case 'poster':
+      return isBn
+        ? ['সাইজ, শিরোনাম ও ভাড়া', 'বিস্তারিত ও ছবি', 'ঠিকানা ও যোগাযোগ', 'কাস্টমাইজ ও ডাউনলোড']
+        : ['Size, Headline & Rent', 'Specs & Photo', 'Contact & Options', 'Customize & Export'];
+    case 'invoice':
+      return isBn
+        ? ['ব্যবসা ও ধরন', 'ক্রেতা ও পণ্য', 'ভ্যাট, পেমেন্ট ও স্বাক্ষর', 'কাস্টমাইজ ও PDF']
+        : ['Business & Type', 'Client & Items', 'Totals & Payment', 'Customize & PDF'];
+  }
+}
+
+function getActiveCustomization(w: WorkspaceState): DocCustomization {
+  switch (w.mode) {
+    case 'cv':
+      return w.cvStyle;
+    case 'biodata':
+      return w.biodataStyle;
+    case 'job_app':
+      return w.jobAppStyle;
+    case 'office_letter':
+      return w.officeLetterStyle;
+    case 'poster':
+      return w.posterStyle;
+    case 'invoice':
+      return w.invoiceStyle;
+  }
+}
+
+function getActiveTemplateId(w: WorkspaceState): string {
+  switch (w.mode) {
+    case 'cv':
+      return w.cvTemplateId;
+    case 'biodata':
+      return w.biodataTemplateId;
+    case 'job_app':
+      return w.jobAppTemplateId;
+    case 'office_letter':
+      return w.officeLetterTemplateId;
+    case 'poster':
+      return w.posterTemplateId;
+    case 'invoice':
+      return w.invoiceTemplateId;
+  }
+}
+
+function getActiveCustomSections(w: WorkspaceState): CustomSectionEntry[] {
+  switch (w.mode) {
+    case 'cv':
+      return w.cv.customSections || [];
+    case 'biodata':
+      return w.biodata.customSections || [];
+    case 'job_app':
+      return w.jobApp.customSections || [];
+    case 'office_letter':
+      return w.officeLetter.customSections || [];
+    case 'poster':
+      return w.poster.customSections || [];
+    case 'invoice':
+      return w.invoice.customSections || [];
+  }
+}
+
+function getActivePhotoState(w: WorkspaceState): { hasPhoto: boolean; showPhoto: boolean } {
+  switch (w.mode) {
+    case 'cv':
+      return { hasPhoto: Boolean(w.cv.photo), showPhoto: w.cv.showPhoto };
+    case 'biodata':
+      return { hasPhoto: Boolean(w.biodata.photo), showPhoto: w.biodata.showPhoto };
+    case 'poster':
+      return { hasPhoto: Boolean(w.poster.photo), showPhoto: w.poster.showPhoto };
+    case 'office_letter':
+      return { hasPhoto: Boolean(w.officeLetter.orgLogo), showPhoto: w.officeLetter.showLogo };
+    case 'invoice':
+      return { hasPhoto: Boolean(w.invoice.logo), showPhoto: w.invoice.showLogo };
+    default:
+      return { hasPhoto: false, showPhoto: false };
+  }
+}
+
 export default function App() {
   const [workspace, setWorkspace] = useState<WorkspaceState>(() =>
     loadWorkspaceFromStorage()
   );
-  // Always open on Stage 1 (Purpose) -> Stage 2 (Templates) -> Stage 3 (Add Info, Preview & Export)
   const [stage, setStage] = useState<AppStage>('purpose');
   const [editorStep, setEditorStep] = useState<number>(0);
   const [mobilePane, setMobilePane] = useState<'edit' | 'preview'>('edit');
   const [showPrivacyModal, setShowPrivacyModal] = useState<boolean>(false);
   const [showClearConfirm, setShowClearConfirm] = useState<boolean>(false);
+  const [codeModalTemplateId, setCodeModalTemplateId] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState<boolean>(false);
+  const [isExportingPng, setIsExportingPng] = useState<boolean>(false);
   const [toast, setToast] = useState<{ text: string; tone?: 'ok' | 'err' } | null>(null);
 
-  // Offscreen unscaled 794px A4 element used exclusively for crisp direct PDF download
   const pdfCaptureRef = useRef<HTMLDivElement>(null);
 
   const L = LABELS[workspace.language];
+  const isBn = workspace.language === 'bn';
+
   const activeFormat: PageFormat =
-    workspace.mode === 'cv' ? workspace.cvFormat : workspace.biodataFormat;
-  const steps =
     workspace.mode === 'cv'
-      ? activeFormat === '1-page'
-        ? L.ui.cvSteps1P
-        : L.ui.cvSteps2P
-      : activeFormat === '1-page'
-      ? L.ui.biodataSteps1P
-      : L.ui.biodataSteps2P;
+      ? workspace.cvFormat
+      : workspace.mode === 'biodata'
+      ? workspace.biodataFormat
+      : workspace.mode === 'poster'
+      ? '1-page'
+      : '2-page';
+
+  const steps = getStepsForMode(workspace.mode, workspace.language, activeFormat);
   const customizeStepIndex = steps.length - 1;
   const safeEditorStep = Math.min(editorStep, customizeStepIndex);
 
-  const activeCustomization =
-    workspace.mode === 'cv' ? workspace.cvStyle : workspace.biodataStyle;
-  const activeTemplateId =
-    workspace.mode === 'cv' ? workspace.cvTemplateId : workspace.biodataTemplateId;
-  const currentDoc = workspace.mode === 'cv' ? workspace.cv : workspace.biodata;
-  const hasSavedDraft =
-    workspace.mode === 'cv' ? hasAnyCVData(workspace.cv) : hasAnyBiodataData(workspace.biodata);
+  const activeCustomization = getActiveCustomization(workspace);
+  const activeTemplateId = getActiveTemplateId(workspace);
+  const activeCustomSections = getActiveCustomSections(workspace);
+  const activePhotoState = getActivePhotoState(workspace);
+  const hasSavedDraft = hasAnyDataForMode(workspace, workspace.mode);
+  const hasCvData = hasAnyCVData(workspace.cv);
+  const posterSpec = getPosterAspectSpec(workspace.posterStyle.posterAspectRatio);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -136,8 +257,16 @@ export default function App() {
 
   const setMode = (mode: AppMode) => {
     setWorkspace((prev) => {
-      const nextFormat = mode === 'cv' ? prev.cvFormat : prev.biodataFormat;
-      const nextMax = nextFormat === '1-page' ? 3 : 4;
+      const nextFormat: PageFormat =
+        mode === 'cv'
+          ? prev.cvFormat
+          : mode === 'biodata'
+          ? prev.biodataFormat
+          : mode === 'poster'
+          ? '1-page'
+          : '2-page';
+      const nextStepsLen = getStepsForMode(mode, prev.language, nextFormat).length;
+      const nextMax = nextStepsLen - 1;
       setEditorStep((s) => (s === customizeStepIndex ? nextMax : Math.min(s, nextMax)));
       return { ...prev, mode };
     });
@@ -147,7 +276,11 @@ export default function App() {
     const wasOnCustomize = safeEditorStep === customizeStepIndex;
     const nextCustomizeIndex = fmt === '1-page' ? 3 : 4;
     setWorkspace((prev) =>
-      prev.mode === 'cv' ? { ...prev, cvFormat: fmt } : { ...prev, biodataFormat: fmt }
+      prev.mode === 'cv'
+        ? { ...prev, cvFormat: fmt }
+        : prev.mode === 'biodata'
+        ? { ...prev, biodataFormat: fmt }
+        : prev
     );
     setEditorStep((prevStep) => {
       if (wasOnCustomize) return nextCustomizeIndex;
@@ -159,82 +292,138 @@ export default function App() {
     setWorkspace((prev) => ({ ...prev, language }));
   };
 
+  const setPosterAspectRatio = (posterAspectRatio: PosterAspectRatio) => {
+    setWorkspace((prev) => ({
+      ...prev,
+      posterStyle: { ...prev.posterStyle, posterAspectRatio },
+    }));
+  };
+
   const handleSelectTemplate = (id: string) => {
     setWorkspace((prev) => {
-      if (prev.mode === 'cv') {
-        return { ...prev, cvTemplateId: id };
-      }
-      const curPreset = prev.biodata.invocationPreset;
-      let nextPreset = curPreset;
-      if (curPreset !== 'custom' && curPreset !== 'none') {
-        if (
-          id === 'sindoor-alpona-hindu' ||
-          id === 'banarasi-crimson-gold' ||
-          id === 'marigold-gaye-holud'
-        ) {
-          nextPreset = 'om';
-        } else if (id === 'shantiniketan-lotus' || id === 'kalighat-ivory-vermilion') {
-          nextPreset = 'shri_durga_bn';
-        } else if (
-          id === 'cathedral-ivory-gold' ||
-          id === 'olive-chapel-sage' ||
-          id === 'midnight-stella-christian' ||
-          id === 'dove-pearl-minimal'
-        ) {
-          nextPreset = 'christian_blessing';
-        } else if (
-          id === 'saffron-dharmachakra' ||
-          id === 'bodhi-serenity-jade' ||
-          id === 'chittagong-hill-weave' ||
-          id === 'lotus-stupa-ivory'
-        ) {
-          nextPreset = 'buddhist_namo';
-        } else if (
-          id === 'islamic-geometric' ||
-          id === 'andalusian-zellij-arch' ||
-          id === 'mughal-arch-palace'
-        ) {
-          if (
-            curPreset === 'om' ||
-            curPreset === 'shri_durga_bn' ||
-            curPreset === 'christian_blessing' ||
-            curPreset === 'buddhist_namo'
-          ) {
-            nextPreset = prev.language === 'bn' ? 'bismillah_ar_bn' : 'bismillah_ar_en';
+      switch (prev.mode) {
+        case 'cv':
+          return { ...prev, cvTemplateId: id };
+        case 'job_app':
+          return { ...prev, jobAppTemplateId: id };
+        case 'office_letter':
+          return { ...prev, officeLetterTemplateId: id };
+        case 'poster':
+          return { ...prev, posterTemplateId: id };
+        case 'invoice':
+          return { ...prev, invoiceTemplateId: id };
+        case 'biodata': {
+          const curPreset = prev.biodata.invocationPreset;
+          let nextPreset = curPreset;
+          if (curPreset !== 'custom' && curPreset !== 'none') {
+            if (
+              id === 'sindoor-alpona-hindu' ||
+              id === 'banarasi-crimson-gold' ||
+              id === 'marigold-gaye-holud'
+            ) {
+              nextPreset = 'om';
+            } else if (id === 'shantiniketan-lotus' || id === 'kalighat-ivory-vermilion') {
+              nextPreset = 'shri_durga_bn';
+            } else if (
+              id === 'cathedral-ivory-gold' ||
+              id === 'olive-chapel-sage' ||
+              id === 'midnight-stella-christian' ||
+              id === 'dove-pearl-minimal'
+            ) {
+              nextPreset = 'christian_blessing';
+            } else if (
+              id === 'saffron-dharmachakra' ||
+              id === 'bodhi-serenity-jade' ||
+              id === 'chittagong-hill-weave' ||
+              id === 'lotus-stupa-ivory'
+            ) {
+              nextPreset = 'buddhist_namo';
+            } else if (
+              id === 'islamic-geometric' ||
+              id === 'andalusian-zellij-arch' ||
+              id === 'mughal-arch-palace'
+            ) {
+              if (
+                curPreset === 'om' ||
+                curPreset === 'shri_durga_bn' ||
+                curPreset === 'christian_blessing' ||
+                curPreset === 'buddhist_namo'
+              ) {
+                nextPreset = prev.language === 'bn' ? 'bismillah_ar_bn' : 'bismillah_ar_en';
+              }
+            }
           }
+          return {
+            ...prev,
+            biodataTemplateId: id,
+            biodata:
+              nextPreset !== curPreset
+                ? { ...prev.biodata, invocationPreset: nextPreset }
+                : prev.biodata,
+          };
         }
       }
-      return {
-        ...prev,
-        biodataTemplateId: id,
-        biodata:
-          nextPreset !== curPreset
-            ? { ...prev.biodata, invocationPreset: nextPreset }
-            : prev.biodata,
-      };
     });
   };
 
   const updateActiveCustomization = (next: DocCustomization) => {
-    setWorkspace((prev) =>
-      prev.mode === 'cv' ? { ...prev, cvStyle: next } : { ...prev, biodataStyle: next }
-    );
+    setWorkspace((prev) => {
+      switch (prev.mode) {
+        case 'cv':
+          return { ...prev, cvStyle: next };
+        case 'biodata':
+          return { ...prev, biodataStyle: next };
+        case 'job_app':
+          return { ...prev, jobAppStyle: next };
+        case 'office_letter':
+          return { ...prev, officeLetterStyle: next };
+        case 'poster':
+          return { ...prev, posterStyle: next };
+        case 'invoice':
+          return { ...prev, invoiceStyle: next };
+      }
+    });
   };
 
   const updateCustomSections = (next: CustomSectionEntry[]) => {
-    setWorkspace((prev) =>
-      prev.mode === 'cv'
-        ? { ...prev, cv: { ...prev.cv, customSections: next } }
-        : { ...prev, biodata: { ...prev.biodata, customSections: next } }
-    );
+    setWorkspace((prev) => {
+      switch (prev.mode) {
+        case 'cv':
+          return { ...prev, cv: { ...prev.cv, customSections: next } };
+        case 'biodata':
+          return { ...prev, biodata: { ...prev.biodata, customSections: next } };
+        case 'job_app':
+          return { ...prev, jobApp: { ...prev.jobApp, customSections: next } };
+        case 'office_letter':
+          return { ...prev, officeLetter: { ...prev.officeLetter, customSections: next } };
+        case 'poster':
+          return { ...prev, poster: { ...prev.poster, customSections: next } };
+        case 'invoice':
+          return { ...prev, invoice: { ...prev.invoice, customSections: next } };
+      }
+    });
   };
 
   const toggleActivePhoto = () => {
-    setWorkspace((prev) =>
-      prev.mode === 'cv'
-        ? { ...prev, cv: { ...prev.cv, showPhoto: !prev.cv.showPhoto } }
-        : { ...prev, biodata: { ...prev.biodata, showPhoto: !prev.biodata.showPhoto } }
-    );
+    setWorkspace((prev) => {
+      switch (prev.mode) {
+        case 'cv':
+          return { ...prev, cv: { ...prev.cv, showPhoto: !prev.cv.showPhoto } };
+        case 'biodata':
+          return { ...prev, biodata: { ...prev.biodata, showPhoto: !prev.biodata.showPhoto } };
+        case 'poster':
+          return { ...prev, poster: { ...prev.poster, showPhoto: !prev.poster.showPhoto } };
+        case 'office_letter':
+          return {
+            ...prev,
+            officeLetter: { ...prev.officeLetter, showLogo: !prev.officeLetter.showLogo },
+          };
+        case 'invoice':
+          return { ...prev, invoice: { ...prev.invoice, showLogo: !prev.invoice.showLogo } };
+        default:
+          return prev;
+      }
+    });
   };
 
   const handleLoadSample = () => {
@@ -250,37 +439,91 @@ export default function App() {
             : SAMPLE_CV_EN;
         return { ...prev, cv: structuredClone(sample) };
       }
-      const sample =
-        prev.biodataFormat === '1-page'
-          ? prev.language === 'bn'
-            ? SAMPLE_BIODATA_1P_BN
-            : SAMPLE_BIODATA_1P_EN
-          : prev.language === 'bn'
-          ? SAMPLE_BIODATA_BN
-          : SAMPLE_BIODATA_EN;
+      if (prev.mode === 'biodata') {
+        const sample =
+          prev.biodataFormat === '1-page'
+            ? prev.language === 'bn'
+              ? SAMPLE_BIODATA_1P_BN
+              : SAMPLE_BIODATA_1P_EN
+            : prev.language === 'bn'
+            ? SAMPLE_BIODATA_BN
+            : SAMPLE_BIODATA_EN;
+        return {
+          ...prev,
+          biodata: {
+            ...structuredClone(sample),
+            invocationPreset: prev.biodata.invocationPreset,
+          },
+        };
+      }
+      if (prev.mode === 'job_app') {
+        return {
+          ...prev,
+          jobApp: getSampleForExtraMode('job_app', prev.language) as JobAppData,
+        };
+      }
+      if (prev.mode === 'office_letter') {
+        return {
+          ...prev,
+          officeLetter: getSampleForExtraMode('office_letter', prev.language) as OfficeLetterData,
+        };
+      }
+      if (prev.mode === 'poster') {
+        return {
+          ...prev,
+          poster: getSampleForExtraMode('poster', prev.language) as PosterData,
+        };
+      }
       return {
         ...prev,
-        biodata: {
-          ...structuredClone(sample),
-          invocationPreset: prev.biodata.invocationPreset,
-        },
+        invoice: getSampleForExtraMode('invoice', prev.language) as InvoiceData,
       };
     });
     notify(
-      workspace.language === 'bn'
-        ? activeFormat === '1-page'
-          ? '১ পৃষ্ঠার নমুনা তথ্য লোড হয়েছে।'
-          : '২ পৃষ্ঠার নমুনা তথ্য লোড হয়েছে।'
-        : activeFormat === '1-page'
-        ? '1-Page Bangladeshi sample data loaded.'
-        : '2-Page Bangladeshi sample data loaded.'
+      isBn ? 'নমুনা তথ্য লোড হয়েছে।' : 'Bangladeshi sample data loaded.'
+    );
+  };
+
+  const handleFillJobAppFromCv = () => {
+    setWorkspace((prev) => ({
+      ...prev,
+      jobApp: buildCvAutofillForJobApp(prev.cv, prev.jobApp),
+    }));
+    notify(
+      isBn
+        ? 'আপনার সিভি থেকে নাম, ফোন, ইমেইল ও ঠিকানা বসানো হয়েছে।'
+        : 'Filled applicant details from your saved CV.'
+    );
+  };
+
+  const handleFillOfficeLetterFromCv = () => {
+    setWorkspace((prev) => ({
+      ...prev,
+      officeLetter: buildCvAutofillForOfficeLetter(prev.cv, prev.officeLetter),
+    }));
+    notify(
+      isBn
+        ? 'আপনার সিভি থেকে প্রেরকের তথ্য বসানো হয়েছে।'
+        : 'Filled sender details from your saved CV.'
+    );
+  };
+
+  const handleFillInvoiceFromCv = () => {
+    setWorkspace((prev) => ({
+      ...prev,
+      invoice: buildCvAutofillForInvoice(prev.cv, prev.invoice),
+    }));
+    notify(
+      isBn
+        ? 'আপনার সিভি থেকে যোগাযোগ ও স্বাক্ষর তথ্য বসানো হয়েছে।'
+        : 'Filled business contact & signature from your saved CV.'
     );
   };
 
   const handleDownloadBackup = () => {
     downloadWorkspaceBackup(workspace);
     notify(
-      workspace.language === 'bn'
+      isBn
         ? 'ব্যক্তিগত ব্যাকআপ (.json) ডাউনলোড হয়েছে।'
         : 'Private backup (.json) downloaded.'
     );
@@ -320,49 +563,139 @@ export default function App() {
     setShowClearConfirm(false);
     setShowPrivacyModal(false);
     notify(
-      workspace.language === 'bn'
+      isBn
         ? 'এই ব্রাউজার থেকে আপনার সব ব্যক্তিগত তথ্য মুছে ফেলা হয়েছে।'
         : 'Everything has been cleared cleanly from this browser.'
     );
   };
 
-  // Direct client-side A4 PDF generation & download (works reliably inside iframes!)
   const handleExportPdf = async () => {
     const captureNode = pdfCaptureRef.current;
     if (!captureNode || isExporting) return;
 
     setIsExporting(true);
     try {
-      const personName =
-        workspace.mode === 'cv' ? workspace.cv.fullName : workspace.biodata.fullName;
-      const docType = workspace.mode === 'cv' ? 'CV' : 'Marriage-Biodata';
-      const fmtSuffix = activeFormat === '1-page' ? '1-Page' : '2-Page';
-      const safeName = hasText(personName)
-        ? personName
-            .trim()
-            .replace(/[\\/:*?"<>|]+/g, '')
-            .replace(/\s+/g, '-')
-        : 'Kagoj';
-      await exportElementToA4Pdf(
-        captureNode,
-        `${safeName}-${docType}-${fmtSuffix}.pdf`,
-        activeFormat
-      );
+      const clean = (s: string) =>
+        s
+          .trim()
+          .replace(/[\\/:*?"<>|]+/g, '')
+          .replace(/\s+/g, '-');
+
+      let fileName = 'Kagoj-Document.pdf';
+      switch (workspace.mode) {
+        case 'cv': {
+          const base = hasText(workspace.cv.fullName) ? clean(workspace.cv.fullName) : 'Kagoj';
+          fileName = `${base}-CV-${workspace.cvFormat === '1-page' ? '1-Page' : '2-Page'}.pdf`;
+          break;
+        }
+        case 'biodata': {
+          const base = hasText(workspace.biodata.fullName)
+            ? clean(workspace.biodata.fullName)
+            : 'Kagoj';
+          fileName = `${base}-Marriage-Biodata-${
+            workspace.biodataFormat === '1-page' ? '1-Page' : '2-Page'
+          }.pdf`;
+          break;
+        }
+        case 'job_app': {
+          const base = hasText(workspace.jobApp.senderName)
+            ? clean(workspace.jobApp.senderName)
+            : 'Kagoj';
+          fileName = `${base}-Job-Application.pdf`;
+          break;
+        }
+        case 'office_letter': {
+          const base = hasText(workspace.officeLetter.senderName)
+            ? clean(workspace.officeLetter.senderName)
+            : 'Kagoj';
+          fileName = `${base}-Official-Letter.pdf`;
+          break;
+        }
+        case 'poster': {
+          const base = hasText(workspace.poster.headline)
+            ? clean(workspace.poster.headline)
+            : 'TO-LET';
+          const ratioSlug = posterSpec.id.replace(':', 'x');
+          fileName = `${base}-Poster-${ratioSlug}.pdf`;
+          break;
+        }
+        case 'invoice': {
+          const base = hasText(workspace.invoice.invoiceNo)
+            ? clean(workspace.invoice.invoiceNo)
+            : hasText(workspace.invoice.businessName)
+            ? clean(workspace.invoice.businessName)
+            : 'Kagoj';
+          fileName = `${base}-${workspace.invoice.docKind}.pdf`;
+          break;
+        }
+      }
+
+      const posterCustomSize =
+        workspace.mode === 'poster'
+          ? {
+              widthPx: posterSpec.width,
+              heightPx: posterSpec.height,
+              widthMm: posterSpec.pdfWidthMm,
+              heightMm: posterSpec.pdfHeightMm,
+            }
+          : undefined;
+
+      await exportElementToA4Pdf(captureNode, fileName, activeFormat, posterCustomSize);
       notify(
-        workspace.language === 'bn'
+        workspace.mode === 'poster'
+          ? isBn
+            ? `আপনার পোস্টার PDF (${posterSpec.shortBn}) ডাউনলোড হয়েছে!`
+            : `Your ${posterSpec.shortEn} poster PDF has been downloaded!`
+          : isBn
           ? 'আপনার A4 PDF সফলভাবে ডাউনলোড হয়েছে!'
           : 'Your A4 PDF has been downloaded!'
       );
     } catch (err) {
       console.error('PDF export failed:', err);
       notify(
-        workspace.language === 'bn'
+        isBn
           ? 'PDF তৈরি করতে সমস্যা হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।'
           : 'Could not generate PDF. Please try again.',
         'err'
       );
     } finally {
       setIsExporting(false);
+    }
+  };
+
+  const handleExportPng = async () => {
+    const captureNode = pdfCaptureRef.current;
+    if (!captureNode || isExportingPng || workspace.mode !== 'poster') return;
+
+    setIsExportingPng(true);
+    try {
+      const clean = (s: string) =>
+        s
+          .trim()
+          .replace(/[\\/:*?"<>|]+/g, '')
+          .replace(/\s+/g, '-');
+      const base = hasText(workspace.poster.headline)
+        ? clean(workspace.poster.headline)
+        : 'TO-LET';
+      const ratioSlug = posterSpec.id.replace(':', 'x');
+      const fileName = `${base}-Poster-${ratioSlug}.png`;
+
+      await exportElementToPng(captureNode, fileName, posterSpec.width, posterSpec.height);
+      notify(
+        isBn
+          ? `আপনার PNG ছবি (${posterSpec.shortBn}) ডাউনলোড হয়েছে!`
+          : `Your ${posterSpec.shortEn} PNG image has been downloaded!`
+      );
+    } catch (err) {
+      console.error('PNG export failed:', err);
+      notify(
+        isBn
+          ? 'PNG ছবি তৈরি করতে সমস্যা হয়েছে। আবার চেষ্টা করুন।'
+          : 'Could not generate PNG image. Please try again.',
+        'err'
+      );
+    } finally {
+      setIsExportingPng(false);
     }
   };
 
@@ -381,10 +714,10 @@ export default function App() {
   return (
     <>
       <div className="no-print min-h-[100dvh] flex flex-col">
-        {/* Clean Single-Line Top Bar with 3-Stage Journey Indicator */}
+        {/* Clean Single-Line Top Bar */}
         <header className="sticky top-0 z-30 bg-[#faf7f0]/95 backdrop-blur-sm border-b border-[#3a3630]/35">
           <div className="max-w-[1440px] mx-auto px-3 sm:px-6 h-14 flex items-center justify-between gap-2 sm:gap-3">
-            {/* Zone 1: Brand */}
+            {/* Brand */}
             <button
               type="button"
               onClick={() => goToStage('purpose')}
@@ -392,11 +725,11 @@ export default function App() {
             >
               <PencilLogoMark className="w-7 h-7 shrink-0" />
               <span className="sketch-heading text-2xl font-bold text-[#24211d] leading-none">
-                {workspace.language === 'bn' ? 'কাগজ' : 'Kagoj'}
+                {isBn ? 'কাগজ' : 'Kagoj'}
               </span>
             </button>
 
-            {/* Zone 2: Clear 3-Stage Progress Navigation — inline only at lg+ (1024px+) so header never clips on tablets/split views */}
+            {/* 3-Stage Journey Indicator */}
             <nav
               aria-label="Creation steps"
               className="hidden lg:flex items-center gap-1 xl:gap-1.5 text-xs xl:text-sm min-w-0"
@@ -428,7 +761,7 @@ export default function App() {
                       >
                         {item.num}
                       </span>
-                      <span>{workspace.language === 'bn' ? item.labelBn : item.labelEn}</span>
+                      <span>{isBn ? item.labelBn : item.labelEn}</span>
                     </button>
                     {idx < journeyItems.length - 1 && (
                       <span className="text-[#b8ad9b] select-none" aria-hidden="true">
@@ -440,7 +773,7 @@ export default function App() {
               })}
             </nav>
 
-            {/* Zone 3: Language, Privacy, Clear Everything & Contextual Primary Action — strictly budgeted for 320px..2560px */}
+            {/* Language, Backup, Clear & Export */}
             <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
               <button
                 type="button"
@@ -454,13 +787,11 @@ export default function App() {
                 type="button"
                 onClick={() => setShowPrivacyModal(true)}
                 className="p-2 min-h-[36px] min-w-[36px] xl:px-2.5 text-xs font-semibold text-[#1e5645] bg-[#fffdf8] border border-[#3a3630]/40 rounded-lg hover:border-[#1e5645] inline-flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 transition-colors"
-                title={workspace.language === 'bn' ? 'প্রাইভেসি ও ব্যাকআপ' : 'Privacy & Backup'}
-                aria-label={workspace.language === 'bn' ? 'প্রাইভেসি ও ব্যাকআপ' : 'Privacy & Backup'}
+                title={isBn ? 'প্রাইভেসি ও ব্যাকআপ' : 'Privacy & Backup'}
+                aria-label={isBn ? 'প্রাইভেসি ও ব্যাকআপ' : 'Privacy & Backup'}
               >
                 <Lock className="w-3.5 h-3.5" />
-                <span className="hidden 2xl:inline">
-                  {workspace.language === 'bn' ? 'ব্যাকআপ' : 'Backup'}
-                </span>
+                <span className="hidden 2xl:inline">{isBn ? 'ব্যাকআপ' : 'Backup'}</span>
               </button>
 
               <button
@@ -474,6 +805,23 @@ export default function App() {
                 <span className="hidden sm:inline lg:hidden xl:inline">{L.ui.clearEverything}</span>
               </button>
 
+              {stage === 'editor' && workspace.mode === 'poster' && (
+                <button
+                  type="button"
+                  disabled={isExportingPng}
+                  onClick={handleExportPng}
+                  className="sketch-btn px-2.5 sm:px-3 py-1.5 min-h-[36px] text-xs sm:text-sm font-bold bg-[#fffdf8] text-[#24211d] inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
+                  title={isBn ? 'ফেসবুক / হোয়াটসঅ্যাপের জন্য PNG ছবি ডাউনলোড' : 'Download high-res PNG for Facebook & WhatsApp'}
+                >
+                  {isExportingPng ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <ImageDown className="w-4 h-4 text-[#1e5645]" />
+                  )}
+                  <span>{isExportingPng ? '...' : 'PNG'}</span>
+                </button>
+              )}
+
               {stage === 'editor' && (
                 <button
                   type="button"
@@ -486,24 +834,26 @@ export default function App() {
                   ) : (
                     <FileDown className="w-4 h-4" />
                   )}
-                  <span className="sm:hidden">
-                    {isExporting ? '...' : 'PDF'}
-                  </span>
+                  <span className="sm:hidden">{isExporting ? '...' : 'PDF'}</span>
                   <span className="hidden sm:inline lg:hidden xl:inline">
                     {isExporting
-                      ? workspace.language === 'bn'
+                      ? isBn
                         ? 'তৈরি হচ্ছে...'
                         : 'Preparing...'
-                      : workspace.language === 'bn'
+                      : workspace.mode === 'poster'
+                      ? isBn
+                        ? 'PDF ডাউনলোড'
+                        : 'Download PDF'
+                      : isBn
                       ? 'A4 PDF ডাউনলোড'
                       : 'Download A4 PDF'}
                   </span>
                   <span className="hidden lg:inline xl:hidden">
                     {isExporting
-                      ? workspace.language === 'bn'
+                      ? isBn
                         ? 'তৈরি হচ্ছে...'
                         : 'Preparing...'
-                      : workspace.language === 'bn'
+                      : isBn
                       ? 'PDF ডাউনলোড'
                       : 'Export PDF'}
                   </span>
@@ -512,7 +862,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* Mobile & Tablet (< 1024px) 3-Stage Stepper Bar — zero header crowding at 320px..1023px */}
+          {/* Mobile & Tablet 3-Stage Stepper Bar */}
           <div className="lg:hidden border-t border-[#3a3630]/20 bg-[#f3ede0]/90 px-2.5 py-1 flex items-center justify-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar">
             {journeyItems.map((item, idx) => {
               const isActive = stage === item.id;
@@ -525,7 +875,7 @@ export default function App() {
                       isActive ? 'bg-[#1e5645] text-white' : 'text-[#5c564d] hover:text-[#24211d]'
                     }`}
                   >
-                    {item.num}. {workspace.language === 'bn' ? item.labelBn : item.labelEn}
+                    {item.num}. {isBn ? item.labelBn : item.labelEn}
                   </button>
                   {idx < journeyItems.length - 1 && (
                     <span className="text-[#9e9484] text-[10px] shrink-0" aria-hidden="true">
@@ -537,7 +887,7 @@ export default function App() {
             })}
           </div>
 
-          {/* Mobile & Tablet (< 1024px) Edit / Preview Toggle unified inside sticky header so it never overlaps or drifts */}
+          {/* Mobile & Tablet Edit / Preview Toggle */}
           {stage === 'editor' && (
             <div className="lg:hidden border-t border-[#3a3630]/20 bg-[#f3ede0]/95 px-3 py-1.5 flex items-center justify-center">
               <div className="inline-flex p-0.5 bg-[#fffdf8] border border-[#3a3630]/60 rounded-lg w-full max-w-sm">
@@ -566,7 +916,7 @@ export default function App() {
           )}
         </header>
 
-        {/* Toast Notification — sits cleanly above sticky mobile bottom bars */}
+        {/* Toast Notification */}
         {toast && (
           <div className="fixed bottom-20 sm:bottom-5 left-4 right-4 sm:left-auto sm:right-5 z-50 sm:max-w-sm">
             <div
@@ -582,9 +932,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ================================================================= */}
-        {/* STAGE 1: ASK PURPOSE FIRST (Full-Canvas Serene Welcome)           */}
-        {/* ================================================================= */}
+        {/* STAGE 1: 6-DOCUMENT CATEGORIZED LAUNCHER */}
         {stage === 'purpose' && (
           <main className="flex-1 flex items-center">
             <div className="w-full">
@@ -604,9 +952,7 @@ export default function App() {
           </main>
         )}
 
-        {/* ================================================================= */}
-        {/* STAGE 2: BROWSE TEMPLATES FOR CHOSEN PURPOSE (Full-Width Gallery) */}
-        {/* ================================================================= */}
+        {/* STAGE 2: 119-TEMPLATE GALLERY */}
         {stage === 'templates' && (
           <main className="flex-1">
             <TemplateGallery
@@ -615,10 +961,16 @@ export default function App() {
               language={workspace.language}
               cv={workspace.cv}
               biodata={workspace.biodata}
+              jobApp={workspace.jobApp}
+              officeLetter={workspace.officeLetter}
+              poster={workspace.poster}
+              invoice={workspace.invoice}
               selectedTemplateId={activeTemplateId}
               customization={activeCustomization}
               onSelectTemplate={handleSelectTemplate}
               onChangePageFormat={setPageFormat}
+              onChangePosterAspectRatio={setPosterAspectRatio}
+              onInspectInvoiceCode={(tplId) => setCodeModalTemplateId(tplId)}
               onBackToPurpose={() => goToStage('purpose')}
               onContinueToEditor={(chosenId) => {
                 if (chosenId) handleSelectTemplate(chosenId);
@@ -629,22 +981,20 @@ export default function App() {
           </main>
         )}
 
-        {/* ================================================================= */}
-        {/* STAGE 3: ADD INFO, LIVE PREVIEW & EXPORT (Adaptive Split Studio)  */}
-        {/* ================================================================= */}
+        {/* STAGE 3: ADAPTIVE SPLIT STUDIO */}
         {stage === 'editor' && (
           <div className="flex-1 max-w-[1440px] w-full mx-auto grid grid-cols-1 lg:grid-cols-[minmax(380px,44%)_minmax(0,1fr)] items-stretch">
-            {/* LEFT PANE: Step-by-Step Info Form & Customize (@container enables true container-aware grids!) */}
+            {/* LEFT PANE: Guided Step Form & Universal Customize */}
             <section
               className={`@container min-w-0 flex flex-col border-r-0 lg:border-r border-[#3a3630]/25 bg-[#faf7f0]/75 ${
                 mobilePane === 'preview' ? 'hidden lg:flex' : 'flex'
               }`}
             >
-              {/* Clean Step Progress Bar for Filling Info */}
+              {/* Step Progress Bar */}
               <div className="px-4 sm:px-7 pt-5 pb-4 border-b border-dashed border-[#3a3630]/25">
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
                   <span className="text-xs font-bold text-[#1e5645] tabular-nums">
-                    {workspace.language === 'bn'
+                    {isBn
                       ? `ধাপ ${safeEditorStep + 1} / ${steps.length} · ${steps[safeEditorStep]}`
                       : `Step ${safeEditorStep + 1} of ${steps.length} · ${steps[safeEditorStep]}`}
                   </span>
@@ -661,7 +1011,6 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Clickable Step Segments (4 for 1-Page, 5 for 2-Page) */}
                 <div
                   className={`grid gap-1.5 ${
                     steps.length === 4 ? 'grid-cols-4' : 'grid-cols-5'
@@ -725,6 +1074,56 @@ export default function App() {
                   />
                 )}
 
+                {safeEditorStep < customizeStepIndex && workspace.mode === 'job_app' && (
+                  <JobAppSteps
+                    step={safeEditorStep + 1}
+                    data={workspace.jobApp}
+                    language={workspace.language}
+                    hasCvData={hasCvData}
+                    onFillFromCv={handleFillJobAppFromCv}
+                    onChange={(jobApp) => setWorkspace((prev) => ({ ...prev, jobApp }))}
+                  />
+                )}
+
+                {safeEditorStep < customizeStepIndex && workspace.mode === 'office_letter' && (
+                  <OfficeLetterSteps
+                    step={safeEditorStep + 1}
+                    data={workspace.officeLetter}
+                    language={workspace.language}
+                    hasCvData={hasCvData}
+                    onFillFromCv={handleFillOfficeLetterFromCv}
+                    onChange={(officeLetter) => setWorkspace((prev) => ({ ...prev, officeLetter }))}
+                  />
+                )}
+
+                {safeEditorStep < customizeStepIndex && workspace.mode === 'poster' && (
+                  <PosterSteps
+                    step={safeEditorStep + 1}
+                    data={workspace.poster}
+                    language={workspace.language}
+                    customization={workspace.posterStyle}
+                    onChangeCustomization={(posterStyle) =>
+                      setWorkspace((prev) => ({ ...prev, posterStyle }))
+                    }
+                    onChange={(poster) => setWorkspace((prev) => ({ ...prev, poster }))}
+                  />
+                )}
+
+                {safeEditorStep < customizeStepIndex && workspace.mode === 'invoice' && (
+                  <InvoiceSteps
+                    step={safeEditorStep + 1}
+                    data={workspace.invoice}
+                    language={workspace.language}
+                    customization={workspace.invoiceStyle}
+                    hasCvData={hasCvData}
+                    onFillFromCv={handleFillInvoiceFromCv}
+                    onChangeCustomization={(invoiceStyle) =>
+                      setWorkspace((prev) => ({ ...prev, invoiceStyle }))
+                    }
+                    onChange={(invoice) => setWorkspace((prev) => ({ ...prev, invoice }))}
+                  />
+                )}
+
                 {safeEditorStep === customizeStepIndex && (
                   <CustomizePanel
                     mode={workspace.mode}
@@ -732,9 +1131,9 @@ export default function App() {
                     language={workspace.language}
                     templateId={activeTemplateId}
                     customization={activeCustomization}
-                    showPhoto={currentDoc.showPhoto}
-                    hasPhoto={Boolean(currentDoc.photo)}
-                    customSections={currentDoc.customSections || []}
+                    showPhoto={activePhotoState.showPhoto}
+                    hasPhoto={activePhotoState.hasPhoto}
+                    customSections={activeCustomSections}
                     onChangeCustomization={updateActiveCustomization}
                     onTogglePhoto={toggleActivePhoto}
                     onChangeCustomSections={updateCustomSections}
@@ -746,7 +1145,7 @@ export default function App() {
                 )}
               </div>
 
-              {/* Sticky Step Footer Navigation on Mobile + Desktop */}
+              {/* Sticky Step Footer Navigation */}
               <footer className="sticky bottom-0 lg:static z-20 px-4 sm:px-8 pt-3.5 safe-bottom lg:py-4 bg-[#f3ede0]/95 backdrop-blur-sm border-t border-[#3a3630]/25 flex items-center justify-between gap-2.5">
                 <button
                   type="button"
@@ -761,7 +1160,7 @@ export default function App() {
                 >
                   <ArrowLeft className="w-4 h-4" />
                   {safeEditorStep === 0
-                    ? workspace.language === 'bn'
+                    ? isBn
                       ? 'টেমপ্লেট'
                       : 'Templates'
                     : L.ui.prevStep}
@@ -776,9 +1175,7 @@ export default function App() {
                     >
                       <SkipForward className="w-3.5 h-3.5" />
                       <span className="hidden sm:inline">{L.ui.skipStep}</span>
-                      <span className="sm:hidden">
-                        {workspace.language === 'bn' ? 'এড়িয়ে যান' : 'Skip'}
-                      </span>
+                      <span className="sm:hidden">{isBn ? 'এড়িয়ে যান' : 'Skip'}</span>
                     </button>
                   )}
 
@@ -792,33 +1189,54 @@ export default function App() {
                       <ArrowRight className="w-4 h-4" />
                     </button>
                   ) : (
-                    <button
-                      type="button"
-                      disabled={isExporting}
-                      onClick={handleExportPdf}
-                      className="sketch-btn px-4 py-2.5 sm:py-2 text-xs sm:text-sm font-bold bg-[#1e5645] text-[#fffdf8] inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
-                    >
-                      {isExporting ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <FileDown className="w-4 h-4" />
+                    <div className="flex items-center gap-2">
+                      {workspace.mode === 'poster' && (
+                        <button
+                          type="button"
+                          disabled={isExportingPng}
+                          onClick={handleExportPng}
+                          className="sketch-btn px-3.5 py-2.5 sm:py-2 text-xs sm:text-sm font-bold bg-[#fffdf8] text-[#24211d] inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                        >
+                          {isExportingPng ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <ImageDown className="w-4 h-4 text-[#1e5645]" />
+                          )}
+                          <span>{isBn ? 'PNG ছবি' : 'PNG Image'}</span>
+                        </button>
                       )}
-                      <span>
-                        {isExporting
-                          ? workspace.language === 'bn'
-                            ? 'তৈরি হচ্ছে...'
-                            : 'Preparing...'
-                          : workspace.language === 'bn'
-                          ? 'A4 PDF ডাউনলোড'
-                          : 'Download A4 PDF'}
-                      </span>
-                    </button>
+                      <button
+                        type="button"
+                        disabled={isExporting}
+                        onClick={handleExportPdf}
+                        className="sketch-btn px-4 py-2.5 sm:py-2 text-xs sm:text-sm font-bold bg-[#1e5645] text-[#fffdf8] inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                      >
+                        {isExporting ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <FileDown className="w-4 h-4" />
+                        )}
+                        <span>
+                          {isExporting
+                            ? isBn
+                              ? 'তৈরি হচ্ছে...'
+                              : 'Preparing...'
+                            : workspace.mode === 'poster'
+                            ? isBn
+                              ? 'PDF ডাউনলোড'
+                              : 'Download PDF'
+                            : isBn
+                            ? 'A4 PDF ডাউনলোড'
+                            : 'Download A4 PDF'}
+                        </span>
+                      </button>
+                    </div>
                   )}
                 </div>
               </footer>
             </section>
 
-            {/* RIGHT PANE: Natural flow on mobile/tablet (< 1024px), Sticky Split Preview on Desktop (lg+) */}
+            {/* RIGHT PANE: Live A4 Preview */}
             <aside
               className={`min-w-0 lg:sticky lg:top-[57px] lg:h-[calc(100dvh-57px)] lg:overflow-hidden flex flex-col ${
                 mobilePane === 'edit' ? 'hidden lg:flex' : 'flex'
@@ -830,10 +1248,16 @@ export default function App() {
                 language={workspace.language}
                 cv={workspace.cv}
                 biodata={workspace.biodata}
-                cvTemplateId={workspace.cvTemplateId}
-                biodataTemplateId={workspace.biodataTemplateId}
+                jobApp={workspace.jobApp}
+                officeLetter={workspace.officeLetter}
+                poster={workspace.poster}
+                invoice={workspace.invoice}
+                activeTemplateId={activeTemplateId}
+                hasContent={hasSavedDraft}
                 customization={activeCustomization}
                 onChangePageFormat={setPageFormat}
+                onChangePosterAspectRatio={setPosterAspectRatio}
+                onOpenInvoiceCode={() => setCodeModalTemplateId(workspace.invoiceTemplateId)}
                 onOpenTemplates={() => goToStage('templates')}
                 onOpenCustomize={() => {
                   switchMobilePane('edit');
@@ -845,7 +1269,7 @@ export default function App() {
           </div>
         )}
 
-        {/* Clean Privacy & Backup Modal */}
+        {/* Privacy & Backup Modal */}
         {showPrivacyModal && (
           <div
             role="dialog"
@@ -932,7 +1356,7 @@ export default function App() {
           </div>
         )}
 
-        {/* Dedicated Clear Everything Confirmation Modal */}
+        {/* Clear Everything Confirmation Modal */}
         {showClearConfirm && (
           <div
             role="dialog"
@@ -982,9 +1406,29 @@ export default function App() {
             </div>
           </div>
         )}
+        {/* Cash Memo / Invoice Template Code Modal */}
+        {codeModalTemplateId && (
+          <InvoiceCodeModal
+            templateId={codeModalTemplateId}
+            data={
+              hasAnyInvoiceData(workspace.invoice)
+                ? workspace.invoice
+                : isBn
+                ? SAMPLE_INVOICE_BN
+                : SAMPLE_INVOICE_EN
+            }
+            language={workspace.language}
+            customization={workspace.invoiceStyle}
+            onChangeTemplateId={(nextId) => {
+              setCodeModalTemplateId(nextId);
+              setWorkspace((prev) => ({ ...prev, invoiceTemplateId: nextId }));
+            }}
+            onClose={() => setCodeModalTemplateId(null)}
+          />
+        )}
       </div>
 
-      {/* Offscreen Unscaled 794px A4 Canvas for Direct Crisp PDF Download */}
+      {/* Offscreen Unscaled Capture Canvas for Crisp PDF / PNG Download */}
       <div
         aria-hidden="true"
         className="no-print"
@@ -999,46 +1443,44 @@ export default function App() {
           zIndex: -1,
         }}
       >
-        <div ref={pdfCaptureRef} style={{ width: '794px', backgroundColor: '#ffffff' }}>
-          {workspace.mode === 'cv' ? (
-            <CVTemplateRenderer
-              data={workspace.cv}
-              templateId={workspace.cvTemplateId}
-              language={workspace.language}
-              customization={workspace.cvStyle}
-              pageFormat={workspace.cvFormat}
-            />
-          ) : (
-            <BiodataTemplateRenderer
-              data={workspace.biodata}
-              templateId={workspace.biodataTemplateId}
-              language={workspace.language}
-              customization={workspace.biodataStyle}
-              pageFormat={workspace.biodataFormat}
-            />
-          )}
+        <div
+          ref={pdfCaptureRef}
+          style={{
+            width: `${workspace.mode === 'poster' ? posterSpec.width : 794}px`,
+            backgroundColor: '#ffffff',
+          }}
+        >
+          <DocumentRenderer
+            mode={workspace.mode}
+            templateId={activeTemplateId}
+            language={workspace.language}
+            customization={activeCustomization}
+            pageFormat={activeFormat}
+            cv={workspace.cv}
+            biodata={workspace.biodata}
+            jobApp={workspace.jobApp}
+            officeLetter={workspace.officeLetter}
+            poster={workspace.poster}
+            invoice={workspace.invoice}
+          />
         </div>
       </div>
 
       {/* Native Print Fallback Root */}
       <div className="print-only-root" aria-hidden="true">
-        {workspace.mode === 'cv' ? (
-          <CVTemplateRenderer
-            data={workspace.cv}
-            templateId={workspace.cvTemplateId}
-            language={workspace.language}
-            customization={workspace.cvStyle}
-            pageFormat={workspace.cvFormat}
-          />
-        ) : (
-          <BiodataTemplateRenderer
-            data={workspace.biodata}
-            templateId={workspace.biodataTemplateId}
-            language={workspace.language}
-            customization={workspace.biodataStyle}
-            pageFormat={workspace.biodataFormat}
-          />
-        )}
+        <DocumentRenderer
+          mode={workspace.mode}
+          templateId={activeTemplateId}
+          language={workspace.language}
+          customization={activeCustomization}
+          pageFormat={activeFormat}
+          cv={workspace.cv}
+          biodata={workspace.biodata}
+          jobApp={workspace.jobApp}
+          officeLetter={workspace.officeLetter}
+          poster={workspace.poster}
+          invoice={workspace.invoice}
+        />
       </div>
     </>
   );
