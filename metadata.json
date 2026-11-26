@@ -1,0 +1,6 @@
+{
+  "name": "Kagoj — Bangladeshi CV & Marriage Biodata Builder",
+  "description": "Free, browser-only Bangladeshi CV and Marriage Biodata builder with 59 print-ready A4 templates, full English and Bangla support, and zero-server privacy.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
