@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Try Kagoj Live / লাইভ অ্যাপ ব্যবহার করুন
+    url: https://aetheioai.github.io/Kagoj/
+    about: Open the live privacy-first Bangladeshi CV & Marriage Biodata Builder directly in your browser.
+  - name: বাংলা ডকুমেন্টেশন (Bangla README)
+    url: https://github.com/aetheioai/Kagoj/blob/main/README.bn.md
+    about: সম্পূর্ণ বাংলায় কাগজ সম্পর্কে জানুন।

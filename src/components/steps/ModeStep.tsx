@@ -17,8 +17,11 @@ interface ModeStepProps {
   onRequestClearAll: () => void;
 }
 
-const CV_ILLUS_SRC = '/src/assets/images/sketch_cv_workbook_1795659049299.jpg';
-const BIODATA_ILLUS_SRC = '/src/assets/images/sketch_biodata_workbook_1795659049927.jpg';
+import cvIllusImg from '../../assets/images/sketch_cv_workbook_1795659049299.jpg';
+import biodataIllusImg from '../../assets/images/sketch_biodata_workbook_1795659049927.jpg';
+
+const CV_ILLUS_SRC = cvIllusImg;
+const BIODATA_ILLUS_SRC = biodataIllusImg;
 
 export function ModeStep({
   mode,

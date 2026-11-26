@@ -1,6 +1,7 @@
 import { BiodataData, CVData } from '../types/builder';
+import samplePortraitImg from '../assets/images/sample_portrait_bd_1795659051413.jpg';
 
-export const SAMPLE_PORTRAIT_URL = '/src/assets/images/sample_portrait_bd_1795659051413.jpg';
+export const SAMPLE_PORTRAIT_URL = samplePortraitImg;
 
 export const EMPTY_CV: CVData = {
   fullName: '',

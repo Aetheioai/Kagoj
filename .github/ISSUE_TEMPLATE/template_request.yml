@@ -1,0 +1,31 @@
+name: New Template Request / নতুন টেমপ্লেটের অনুরোধ
+description: Suggest a new Bangladeshi CV or Marriage Biodata template (নতুন সিভি বা বায়োডাটা টেমপ্লেট প্রস্তাব করুন)
+title: "[Template]: "
+labels: ["template-request"]
+body:
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Template Type / টেমপ্লেটের ধরন
+      options:
+        - Bangladeshi CV (Job / Academic / Bank / Govt)
+        - Marriage Biodata (Biye / Bibaho)
+    validations:
+      required: true
+
+  - type: input
+    id: style
+    attributes:
+      label: Style / Culture / Use Case (স্টাইল বা ব্যবহারের ক্ষেত্র)
+      placeholder: e.g. BCS / Govt Job Formal, Rajshahi Silk Floral, Minimalist Tech CV
+    validations:
+      required: true
+
+  - type: textarea
+    id: details
+    attributes:
+      label: Layout & Color Idea / ডিজাইন ও রঙের ধারণা
+      description: Share layout preferences (1-column, 2-column, border style, colors, faith/neutral heading).
+      placeholder: Write in English or Bangla...
+    validations:
+      required: true

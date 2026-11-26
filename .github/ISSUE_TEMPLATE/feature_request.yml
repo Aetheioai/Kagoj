@@ -1,0 +1,20 @@
+name: Feature Request / নতুন ফিচারের প্রস্তাব
+description: Suggest an improvement or new capability for Kagoj (নতুন কোনো ফিচার বা উন্নতির প্রস্তাব দিন)
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or Need / কী প্রয়োজন বা সমস্যা?
+      placeholder: Describe what you are trying to do in English or Bangla...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution / প্রস্তাবিত সমাধান
+      placeholder: How would you like this to work? (Remember Kagoj stays 100% browser-only and privacy-first!)
+    validations:
+      required: true

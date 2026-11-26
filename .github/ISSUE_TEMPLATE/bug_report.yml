@@ -1,0 +1,57 @@
+name: Bug Report / বাগ রিপোর্ট
+description: Report a layout issue, PDF export problem, or bug (কোনো সমস্যা বা বাগ জানান)
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please do **not** upload screenshots containing your real phone number, home address, NID, or private family details. Use **Load Sample Data** to reproduce the bug safely!
+        অনুগ্রহ করে আপনার আসল ফোন নম্বর, ঠিকানা, এনআইডি বা পারিবারিক তথ্যসহ স্ক্রিনশট দেবেন না — **নমুনা তথ্য (Load Sample Data)** ব্যবহার করে সমস্যাটি দেখান।
+
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Document Mode / ডকুমেন্ট মোড
+      options:
+        - Bangladeshi CV (1-Page)
+        - Bangladeshi CV (2-Page)
+        - Marriage Biodata (1-Page)
+        - Marriage Biodata (2-Page)
+        - General UI / Photo Editor / Export
+    validations:
+      required: true
+
+  - type: input
+    id: template
+    attributes:
+      label: Template Name (if applicable) / টেমপ্লেটের নাম
+      placeholder: e.g. Dhaka Bank Executive, Sindoor Alpona
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened? / কী সমস্যা হয়েছে?
+      description: Explain clearly what went wrong and what you expected.
+      placeholder: Describe the issue in English or Bangla...
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce / কীভাবে সমস্যাটি হয়?
+      placeholder: |
+        1. Choose ...
+        2. Click ...
+        3. See error ...
+    validations:
+      required: true
+
+  - type: input
+    id: device
+    attributes:
+      label: Device & Browser / ডিভাইস ও ব্রাউজার
+      placeholder: e.g. Android Chrome, iPhone Safari, Windows Chrome 130
+    validations:
+      required: true

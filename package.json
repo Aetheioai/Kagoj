@@ -1,7 +1,30 @@
 {
-  "name": "react-example",
-  "private": true,
-  "version": "0.0.0",
+  "name": "kagoj",
+  "version": "1.0.0",
+  "description": "Free, open-source, privacy-first Bangladeshi CV & Marriage Biodata builder running 100% in your browser with 59 print-ready A4 templates in English and Bangla.",
+  "license": "MIT",
+  "homepage": "https://aetheioai.github.io/Kagoj/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aetheioai/Kagoj.git"
+  },
+  "bugs": {
+    "url": "https://github.com/aetheioai/Kagoj/issues"
+  },
+  "keywords": [
+    "bangladesh",
+    "cv-builder",
+    "resume-builder",
+    "marriage-biodata",
+    "biye-biodata",
+    "bangla",
+    "privacy-first",
+    "offline-first",
+    "a4-pdf",
+    "react",
+    "typescript",
+    "tailwindcss"
+  ],
   "type": "module",
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",

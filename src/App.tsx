@@ -57,9 +57,11 @@ import { A4PreviewPane } from './components/A4PreviewPane';
 import { CVTemplateRenderer } from './components/templates/CVTemplates';
 import { BiodataTemplateRenderer } from './components/templates/BiodataTemplates';
 
+import privacyLockImg from './assets/images/sketch_privacy_lock_1795659050240.jpg';
+
 type AppStage = 'purpose' | 'templates' | 'editor';
 
-const PRIVACY_ILLUS_SRC = '/src/assets/images/sketch_privacy_lock_1795659050240.jpg';
+const PRIVACY_ILLUS_SRC = privacyLockImg;
 
 export default function App() {
   const [workspace, setWorkspace] = useState<WorkspaceState>(() =>
