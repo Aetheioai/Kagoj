@@ -223,6 +223,10 @@ export default function App() {
   const posterSpec = getPosterAspectSpec(workspace.posterStyle.posterAspectRatio);
 
   useEffect(() => {
+    document.documentElement.lang = workspace.language === 'bn' ? 'bn' : 'en';
+  }, [workspace.language]);
+
+  useEffect(() => {
     const timer = window.setTimeout(() => {
       saveWorkspaceToStorage(workspace);
     }, 220);

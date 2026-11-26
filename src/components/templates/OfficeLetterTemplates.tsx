@@ -86,8 +86,8 @@ export function OfficeLetterTemplateRenderer({
     fontFamily: useSerif
       ? DISPLAY_SERIF
       : language === 'bn'
-      ? '"Hind Siliguri", sans-serif'
-      : '"Plus Jakarta Sans", "Hind Siliguri", sans-serif',
+      ? '"Noto Sans Bengali", sans-serif'
+      : '"Plus Jakarta Sans", "Noto Sans Bengali", sans-serif',
     backgroundColor: meta.paperTint || '#ffffff',
     color: '#1b1a18',
     fontSize: fs(13.4),

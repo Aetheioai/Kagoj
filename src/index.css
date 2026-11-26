@@ -1,9 +1,9 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sketch: "Patrick Hand", "Hind Siliguri", cursive, sans-serif;
-  --font-sans: "Hind Siliguri", system-ui, -apple-system, sans-serif;
-  --font-serif: "Noto Serif Bengali", Georgia, "Times New Roman", serif;
+  --font-sketch: "Patrick Hand", "Noto Sans Bengali", cursive, sans-serif;
+  --font-sans: "Plus Jakarta Sans", "Noto Sans Bengali", system-ui, -apple-system, sans-serif;
+  --font-serif: "Cormorant Garamond", "Noto Serif Bengali", Georgia, "Times New Roman", serif;
 
   --color-paper: #faf7f0;
   --color-paper-warm: #f3ede0;
@@ -33,12 +33,15 @@ html {
 
 body {
   margin: 0;
+  font-family: var(--font-sans);
   background-color: #faf7f0;
   color: #24211d;
   background-image: radial-gradient(rgba(58, 54, 48, 0.11) 1px, transparent 1px);
   background-size: 22px 22px;
   overflow-x: clip;
+  text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   -webkit-tap-highlight-color: transparent;
 }
 

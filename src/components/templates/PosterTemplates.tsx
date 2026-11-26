@@ -118,8 +118,8 @@ export function PosterTemplateRenderer({
     fontFamily: useSerif
       ? DISPLAY_SERIF
       : language === 'bn'
-      ? '"Hind Siliguri", sans-serif'
-      : '"Plus Jakarta Sans", "Hind Siliguri", sans-serif',
+      ? '"Noto Sans Bengali", sans-serif'
+      : '"Plus Jakarta Sans", "Noto Sans Bengali", sans-serif',
     backgroundColor: '#ffffff',
     color: '#171717',
     width: `${aspectSpec.width}px`,

@@ -72,8 +72,8 @@ export function JobAppTemplateRenderer({
     fontFamily: useSerif
       ? DISPLAY_SERIF
       : language === 'bn'
-      ? '"Hind Siliguri", sans-serif'
-      : '"Plus Jakarta Sans", "Hind Siliguri", sans-serif',
+      ? '"Noto Sans Bengali", sans-serif'
+      : '"Plus Jakarta Sans", "Noto Sans Bengali", sans-serif',
     backgroundColor: meta.paperTint || '#ffffff',
     color: '#1e1c1a',
     fontSize: fs(13.2),

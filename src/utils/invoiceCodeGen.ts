@@ -586,14 +586,14 @@ ${bodySectionsHtml}
   </div>`;
 
   const fontLink = theme.useSerif
-    ? 'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Hind+Siliguri:wght@400;500;600;700&family=Noto+Serif+Bengali:wght@500;700&display=swap'
-    : 'https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap';
+    ? 'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Noto+Sans+Bengali:wght@400;500;600;700&family=Noto+Serif+Bengali:wght@500;700&display=swap'
+    : 'https://fonts.googleapis.com/css2?family=Noto+Sans+Bengali:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap';
 
   const fontFamily = theme.useSerif
     ? '"Cormorant Garamond", "Noto Serif Bengali", Georgia, serif'
     : isBn
-    ? '"Hind Siliguri", sans-serif'
-    : '"Plus Jakarta Sans", "Hind Siliguri", sans-serif';
+    ? '"Noto Sans Bengali", sans-serif'
+    : '"Plus Jakarta Sans", "Noto Sans Bengali", sans-serif';
 
   return `<!DOCTYPE html>
 <html lang="${isBn ? 'bn' : 'en'}">
